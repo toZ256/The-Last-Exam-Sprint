@@ -225,7 +225,8 @@ public class PlayScreen implements Screen {
         scoreSubmitted = true;
 
         int durationSpent = 60 - (int)timeRemaining;
-        String jsonPayload = String.format("{\"playerId\": 1, \"score\": %d, \"distanceMeters\": %f, \"durationSeconds\": %d}",
+        String jsonPayload = String.format(
+            "{\"playerId\": 1, \"score\": %d, \"distanceMeters\": %.2f, \"durationSeconds\": %d}",
             (int)score, score, durationSpent);
 
         Net.HttpRequest request = new Net.HttpRequest(Net.HttpMethods.POST);
@@ -236,7 +237,12 @@ public class PlayScreen implements Screen {
         Gdx.net.sendHttpRequest(request, new Net.HttpResponseListener() {
             @Override
             public void handleHttpResponse(Net.HttpResponse httpResponse) {
-                Gdx.app.log("Network", "Score Saved! Status: " + httpResponse.getStatus().getStatusCode());
+                int statusCode = httpResponse.getStatus().getStatusCode();
+                if (statusCode == 200 || statusCode == 201) {
+                    Gdx.app.log("Network", "BERHASIL! Skor masuk database. Status: " + statusCode);
+                } else {
+                    Gdx.app.error("Network", "GAGAL SIMPAN! Server menolak. Status: " + statusCode);
+                }
             }
 
             @Override
