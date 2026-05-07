@@ -9,12 +9,11 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.glutils.ShapeRenderer;
+import id.ac.ui.tom.game.Assets;
 import id.ac.ui.tom.game.MainGame;
 
 public class PlayScreen implements Screen {
     private final MainGame game;
-    private ShapeRenderer shapeRenderer;
-    private BitmapFont font;
 
     // Logika Lari
     private float currentSpeed = 0;
@@ -36,8 +35,7 @@ public class PlayScreen implements Screen {
     private final float SLANT_RATIO = 0.4f;
 
     // Logika Obstacle
-    private float obstacleY = 800;
-    private int obstacleLane = 1;
+    private id.ac.ui.tom.game.obstacle.Obstacle currentObstacle;
 
     // Status Game
     private boolean gameOver = false;
@@ -50,40 +48,35 @@ public class PlayScreen implements Screen {
 
     public PlayScreen(MainGame game) {
         this.game = game;
-        this.shapeRenderer = new ShapeRenderer();
-        this.font = new BitmapFont();
-        this.font.getData().setScale(1.5f);
-        this.font.setColor(Color.WHITE);
+        Gdx.input.setInputProcessor(new id.ac.ui.tom.game.command.GameInputHandler(this));
+        currentObstacle = id.ac.ui.tom.game.obstacle.ObstacleFactory.createRandomObstacle(800);
+    }
 
-        Gdx.input.setInputProcessor(new InputAdapter() {
-            @Override
-            public boolean keyDown(int keycode) {
-                // Abaikan input jika game over ATAU sedang terpeleset
-                if (gameOver || isSlipping) return false;
+    // Method yang dieksekusi oleh JumpCommand
+    public void jump() {
+        if (!gameOver && !isSlipping && playerZ <= 0) {
+            jumpVelocity = 500;
+        }
+    }
 
-                // Logika lari dengan
-                if (keycode == Input.Keys.LEFT && lastKeyUsed != Input.Keys.LEFT) {
-                    currentSpeed += ACCEL;
-                    lastKeyUsed = Input.Keys.LEFT;
-                } else if (keycode == Input.Keys.RIGHT && lastKeyUsed != Input.Keys.RIGHT) {
-                    currentSpeed += ACCEL;
-                    lastKeyUsed = Input.Keys.RIGHT;
-                }
+    // Method yang dieksekusi oleh MoveLaneCommand
+    public void shiftLane(int direction) {
+        if (!gameOver && !isSlipping) {
+            currentLane += direction;
+            // Batasi agar tidak keluar jalur (0, 1, 2)
+            if (currentLane < 0) currentLane = 0;
+            if (currentLane > 2) currentLane = 2;
+        }
+    }
 
-                // Logika Pindah Lajur
-                if (keycode == Input.Keys.UP || keycode == Input.Keys.A) {
-                    if (currentLane > 0) currentLane--;
-                } else if (keycode == Input.Keys.DOWN || keycode == Input.Keys.D) {
-                    if (currentLane < 2) currentLane++;
-                }
-
-                // Logika Lompat
-                if (keycode == Input.Keys.SPACE && playerZ <= 0) {
-                    jumpVelocity = 500;
-                }
-                return true;
+    // Method yang dieksekusi oleh SprintCommand
+    public void sprint(int keycode) {
+        if (!gameOver && !isSlipping) {
+            if (keycode != lastKeyUsed) {
+                currentSpeed += ACCEL;
+                lastKeyUsed = keycode;
             }
-        });
+        }
     }
 
     private float getIsometricX(int lane, float y) {
@@ -140,16 +133,24 @@ public class PlayScreen implements Screen {
             }
 
             // Pergerakan Obstacle
-            obstacleY -= currentSpeed * delta;
-            if (obstacleY < -50) {
-                obstacleY = 800;
-                obstacleLane = (int)(Math.random() * 3);
+            currentObstacle.y -= currentSpeed * delta;
+            if (currentObstacle.y < -50) {
+                // Factory membuat rintangan baru secara otomatis
+                currentObstacle = id.ac.ui.tom.game.obstacle.ObstacleFactory.createRandomObstacle(800);
             }
 
-            // Deteksi Tabrakan
-            if (currentLane == obstacleLane && Math.abs(obstacleY - playerY) < 30 && playerZ < 40) {
-                gameOver = true;
-                submitScoreToBackend();
+            // Deteksi Tabrakan yang lebih cerdas
+            if (currentLane == currentObstacle.lane && Math.abs(currentObstacle.y - playerY) < 30) {
+                // Jika rintangan butuh lompatan (seperti kursi) dan kita tidak melompat cukup tinggi
+                if (currentObstacle.needsJump() && playerZ < 40) {
+                    gameOver = true;
+                    submitScoreToBackend();
+                }
+                // Jika rintangan tidak butuh lompatan (seperti genangan) tapi kita injak
+                else if (!currentObstacle.needsJump() && playerZ < 5) {
+                    gameOver = true;
+                    submitScoreToBackend();
+                }
             }
         }
 
@@ -157,56 +158,56 @@ public class PlayScreen implements Screen {
         Gdx.gl.glClearColor(0.1f, 0.1f, 0.15f, 1);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
-        shapeRenderer.setProjectionMatrix(game.batch.getProjectionMatrix());
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        Assets.getInstance().shapeRenderer.setProjectionMatrix(game.batch.getProjectionMatrix());
+        Assets.getInstance().shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
         // Gambar jalur
-        shapeRenderer.setColor(Color.DARK_GRAY);
+        Assets.getInstance().shapeRenderer.setColor(Color.DARK_GRAY);
         for (int i = 0; i < 3; i++) {
             float startX = getIsometricX(i, 0);
             float endX = getIsometricX(i, Gdx.graphics.getHeight());
-            shapeRenderer.rectLine(startX, 0, endX, Gdx.graphics.getHeight(), 5);
+            Assets.getInstance().shapeRenderer.rectLine(startX, 0, endX, Gdx.graphics.getHeight(), 5);
         }
 
         // Gambar obstacle
-        shapeRenderer.setColor(Color.RED);
-        float obsX = getIsometricX(obstacleLane, obstacleY);
-        drawSkewedBox(obsX, obstacleY, 30, 30, 10);
+        Assets.getInstance().shapeRenderer.setColor(Color.RED);
+        float obsX = getIsometricX(currentObstacle.lane, currentObstacle.y);
+        currentObstacle.draw(id.ac.ui.tom.game.Assets.getInstance().shapeRenderer, obsX, 10);
 
         // Gambar pemain
         if (isSlipping) {
-            shapeRenderer.setColor(Color.ORANGE);
+            Assets.getInstance().shapeRenderer.setColor(Color.ORANGE);
         } else {
-            shapeRenderer.setColor(Color.CYAN);
+            Assets.getInstance().shapeRenderer.setColor(Color.CYAN);
         }
         drawSkewedBox(playerX, playerY + playerZ, 40, 50, 15);
 
-        shapeRenderer.end();
+        Assets.getInstance().shapeRenderer.end();
 
         // Teks Sementara
         game.batch.begin();
-        font.setColor(Color.WHITE);
-        font.draw(game.batch, "KECEPATAN: " + (int)currentSpeed, 20, Gdx.graphics.getHeight() - 20);
-        font.draw(game.batch, "JARAK LARI: " + (int)score + " m", 20, Gdx.graphics.getHeight() - 50);
+        Assets.getInstance().font.setColor(Color.WHITE);
+        Assets.getInstance().font.draw(game.batch, "KECEPATAN: " + (int)currentSpeed, 20, Gdx.graphics.getHeight() - 20);
+        Assets.getInstance().font.draw(game.batch, "JARAK LARI: " + (int)score + " m", 20, Gdx.graphics.getHeight() - 50);
 
         // Sisa waktu
-        font.setColor(timeRemaining < 10 ? Color.RED : Color.WHITE); // Merah jika waktu < 10 detik
-        font.draw(game.batch, "WAKTU: " + (int)timeRemaining + " s", Gdx.graphics.getWidth() - 150, Gdx.graphics.getHeight() - 20);
+        Assets.getInstance().font.setColor(timeRemaining < 10 ? Color.RED : Color.WHITE); // Merah jika waktu < 10 detik
+        Assets.getInstance().font.draw(game.batch, "WAKTU: " + (int)timeRemaining + " s", Gdx.graphics.getWidth() - 150, Gdx.graphics.getHeight() - 20);
 
         // Peringatan Kecepatan / Terpeleset
         if (isSlipping) {
-            font.setColor(Color.ORANGE);
-            font.draw(game.batch, "TERPELESET! TUNGGU " + String.format("%.1f", slipTimer) + " s",
+            Assets.getInstance().font.setColor(Color.ORANGE);
+            Assets.getInstance().font.draw(game.batch, "TERPELESET! TUNGGU " + String.format("%.1f", slipTimer) + " s",
                 Gdx.graphics.getWidth() / 2f - 150, Gdx.graphics.getHeight() / 2f + 100);
         } else if (currentSpeed > 600) {
-            font.setColor(Color.RED);
-            font.draw(game.batch, "AWAS TERPELESET!", 20, Gdx.graphics.getHeight() - 80);
+            Assets.getInstance().font.setColor(Color.RED);
+            Assets.getInstance().font.draw(game.batch, "AWAS TERPELESET!", 20, Gdx.graphics.getHeight() - 80);
         }
 
         if (gameOver) {
-            font.setColor(Color.YELLOW);
+            Assets.getInstance().font.setColor(Color.YELLOW);
             String msg = timeRemaining <= 0 ? "GAME OVER! TERLAMBAT MASUK KELAS!" : "GAME OVER! MENABRAK!";
-            font.draw(game.batch, msg, Gdx.graphics.getWidth() / 2f - 200, Gdx.graphics.getHeight() / 2f);
+            Assets.getInstance().font.draw(game.batch, msg, Gdx.graphics.getWidth() / 2f - 200, Gdx.graphics.getHeight() / 2f);
         }
         game.batch.end();
     }
@@ -215,8 +216,8 @@ public class PlayScreen implements Screen {
         float x1 = x - width / 2;
         float x2 = x + width / 2;
         float y2 = y + height;
-        shapeRenderer.triangle(x1, y, x2, y, x2 + skew, y2);
-        shapeRenderer.triangle(x1, y, x2 + skew, y2, x1 + skew, y2);
+        Assets.getInstance().shapeRenderer.triangle(x1, y, x2, y, x2 + skew, y2);
+        Assets.getInstance().shapeRenderer.triangle(x1, y, x2 + skew, y2, x1 + skew, y2);
     }
 
     private void submitScoreToBackend() {
@@ -247,9 +248,9 @@ public class PlayScreen implements Screen {
     }
 
     @Override public void dispose() {
-        shapeRenderer.dispose();
-        font.dispose();
+
     }
+
     @Override public void show() {}
     @Override public void resize(int width, int height) {}
     @Override public void pause() {}

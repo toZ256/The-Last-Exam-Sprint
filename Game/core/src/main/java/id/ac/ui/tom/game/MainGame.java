@@ -10,7 +10,6 @@ public class MainGame extends Game {
     @Override
     public void create() {
         batch = new SpriteBatch();
-       
         // Langsung ke main menu
         this.setScreen(new MainMenuScreen(this));
     }
@@ -24,5 +23,6 @@ public class MainGame extends Game {
     @Override
     public void dispose() {
         batch.dispose();
+        Assets.getInstance().dispose();
     }
 }

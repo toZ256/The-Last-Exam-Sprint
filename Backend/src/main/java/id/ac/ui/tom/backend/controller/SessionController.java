@@ -39,7 +39,7 @@ public class SessionController {
             @PathVariable Long playerId) {
         return ResponseEntity.ok(sessionService.getPlayerHistory(playerId));
     }
-\
+
     @GetMapping("/highscore/{playerId}")
     public ResponseEntity<Integer> highScore(
             @PathVariable Long playerId) {
